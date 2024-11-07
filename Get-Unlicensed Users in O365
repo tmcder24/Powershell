@@ -1,0 +1,28 @@
+#This script takes users from an on-prem Active Directory and compares their AD group membership to their actual licensed status in Azure/O365.  This allows for you to generate a report of any users that are assigned the AD group, but are missing a license in O365.
+
+#Sets security TLS policy to allow the script to run in Azure
+[System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls11 -bor [System.Net.SecurityProtocolType]::Tls12;
+ #------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ #Gets users in a specific group 
+ $groupmembers = get-adgroupmember -identity "INSERT YOUR AD GROUP NAME HERE" | select -expand samaccountname 
+
+ #Pulls data on each member 
+ $Users = foreach ($member in $groupmembers){ get-aduser -identity $member -properties Mail | Select -expand Mail } 
+
+ #------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+ #Runs a loop and if statement, if the SKU is null, it prints that username to indicate what users are missing the license.
+ Connect-AzureAD 
+ $ForEachUser = ForEach($user in $users){
+  
+ $sku = Get-AzureADUser -ObjectId $user | Select -ExpandProperty assignedlicenses | Select skuid | Where skuid -EQ "INSERT WHATEVER SKU YOU WANT TO CHECK HERE" 
+ 
+ if ($sku -eq $null){$user} 
+ 
+ } 
+
+ #This runs your list of unlicensed users back through Azure to get more information on the account name
+ $UnlicensedUsers = ForEach($for in $ForEachUser){ get-azureaduser -ObjectId "$for" | Select UserPrincipalName,JobTitle,PhysicalDeliveryOfficeName }
+ 
+ #Exports list of unlicensed users to CSV for reporting
+ $UnlicensedUsers | Export-Csv ./UnlicensedUsers-E3.csv
